@@ -20,9 +20,8 @@ $reception_background = iro_opt('reception_background');
         <img alt="loading_svg" src="<?php echo esc_url(iro_opt('load_nextpage_svg')); ?>">
       </div>
       <div class="footer-content">
-          <?php if (iro_opt('footer_yiyan')): ?>
-            <p id="footer_yiyan" class="hitokoto"></p>
-          <?php endif; ?>
+          <p id="ai-poem"><?php echo esc_html(get_ai_poem_from_cf_header()); ?></p>
+          <p id="visitor-info"><?php echo get_visitor_info(); ?></p>
           <?php if (!empty(iro_opt('footer_info', ''))): ?>
             <p class="footer_info"><?php echo iro_opt('footer_info', ''); ?></p>
           <?php endif; ?>
@@ -37,11 +36,7 @@ $reception_background = iro_opt('reception_background');
           
           <?php if (iro_opt('footer_upyun', 'true')): ?>
             <p class="cdn-provider">
-              <span>本网站由</span>
-              <a href="https://www.upyun.com/?utm_source=lianmeng&utm_medium=referral" target="_blank">
-                <img alt="upyun-logo" src="https://s.nmxc.ltd/sakurairo_vision/@3.0/options/upyun_logo.webp" />
-              </a>
-              <span>提供 CDN 加速 / 云存储 服务</span>
+              <span>Cloudflare provides CDN services and R2 storage</span>
             </p>
           <?php endif; ?>
         </div>
@@ -49,7 +44,7 @@ $reception_background = iro_opt('reception_background');
       <div class="theme-info">
           <?php if (iro_opt('footer_sakura', 'true')): ?>
             <div class="sakura-icon">
-              <svg width="30px" height="30px" t="1682340134496" class="sakura-svg" viewBox="0 0 1049 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5240">
+                          <svg width="30px" height="30px" t="1682340134496" class="sakura-svg" viewBox="0 0 1049 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5240">
                 <path d="M525.58396628 573.34694353s268.83106938-2.62915481 309.36387092 193.24287089l-76.46458293 21.90962291 12.92667757 84.13295086a214.05701289 214.05701289 0 0 1-96.84053193-4.82011663A224.79272784 224.79272784 0 0 1 525.58396628 578.38615666z" fill="#EE9ca7" p-id="5241"></path>
                 <path d="M552.75189802 512.4381922s131.45773592-233.7756732 321.63325979-170.89505575L854.2283053 418.66500728l79.31283344 30.89256828a215.59068679 215.59068679 0 0 1-52.58309388 81.50379604 224.57363215 224.57363215 0 0 1-325.35789552-14.67944718z" fill="#EE9ca7" p-id="5242"></path>
                 <path d="M508.49446078 494.0341093S317.00435871 306.48774025 426.77156822 139.31731943l69.4535037 38.78003191L547.4935884 109.30113636a214.05701289 214.05701289 0 0 1 65.72886796 71.86356201 225.01182435 225.01182435 0 0 1-98.37420505 310.67844912z" fill="#EE9ca7" p-id="5243"></path>
