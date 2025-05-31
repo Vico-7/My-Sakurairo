@@ -21,7 +21,6 @@ $reception_background = iro_opt('reception_background');
       </div>
       <div class="footer-content">
           <p id="ai-poem"><?php echo esc_html(get_ai_poem_from_cf_header()); ?></p>
-          <p id="visitor-info"><?php echo get_visitor_info(); ?></p>
           <?php if (!empty(iro_opt('footer_info', ''))): ?>
             <p class="footer_info"><?php echo iro_opt('footer_info', ''); ?></p>
           <?php endif; ?>
