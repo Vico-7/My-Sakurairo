@@ -42,10 +42,10 @@ class Turnstile {
     public function html($action = 'login') {
         $id = 'turnstile-' . esc_attr($action);
         $error_id = 'turnstile-error-' . esc_attr($action);
-        return '<div style="display: flex; justify-content: center; align-items: center; width: 100%; min-height: 0; transition: min-height 0.8s ease;">' .
+        return '<div style="display: flex; justify-content: center; align-items: center; width: 100%; min-height: 0; transition: min-height 0.8s ease; will-change: min-height;">' .
                '<div style="display: inline-block; text-align: center;">' .
                '<div id="' . $error_id . '" style="display: none; color: red; margin-bottom: 10px;"></div>' .
-               '<div id="' . $id . '" class="cf-turnstile" data-sitekey="' . esc_attr($this->sitekey) . '" data-theme="' . esc_attr($this->theme) . '" data-language="' . esc_attr($this->lang) . '" data-action="' . esc_attr($action) . '" data-callback="onTurnstileSuccess" data-error-id="' . $error_id . '" style="filter: blur(5px); opacity: 0; transition: filter 0.8s ease, opacity 0.8s ease;"></div>' .
+               '<div id="' . $id . '" class="cf-turnstile" data-sitekey="' . esc_attr($this->sitekey) . '" data-theme="' . esc_attr($this->theme) . '" data-language="' . esc_attr($this->lang) . '" data-action="' . esc_attr($action) . '" data-callback="onTurnstileSuccess" data-error-id="' . $error_id . '" style="filter: blur(5px); opacity: 0; transition: filter 0.8s ease, opacity 0.8s ease; will-change: filter, opacity;"></div>' .
                '</div>' .
                '</div>';
     }
@@ -68,24 +68,33 @@ class Turnstile {
                     console.warn("Turnstile animation failed: missing turnstileDiv or container");
                     return;
                 }
-                setTimeout(() => {
+
+                // 使用 requestAnimationFrame 确保动画流畅
+                requestAnimationFrame(() => {
+                    container.style.transition = "min-height 0.8s ease";
                     container.style.minHeight = "80px";
+
+                    // 在拉伸动画完成后（800ms + 800ms延迟）执行渐显
                     setTimeout(() => {
-                        turnstileDiv.style.filter = "blur(0)";
-                        turnstileDiv.style.opacity = "1";
-                        if (typeof turnstile !== "undefined" && turnstileDiv.id) {
-                            turnstile.render(turnstileDiv.id, {
-                                sitekey: turnstileDiv.dataset.sitekey,
-                                theme: turnstileDiv.dataset.theme,
-                                language: turnstileDiv.dataset.language,
-                                action: turnstileDiv.dataset.action,
-                                callback: window.onTurnstileSuccess
-                            });
-                        } else {
-                            console.warn("Turnstile API not loaded when trying to render");
-                        }
-                    }, 400);
-                }, 200);
+                        requestAnimationFrame(() => {
+                            turnstileDiv.style.transition = "filter 0.8s ease, opacity 0.8s ease";
+                            turnstileDiv.style.filter = "blur(0)";
+                            turnstileDiv.style.opacity = "1";
+
+                            if (typeof turnstile !== "undefined" && turnstileDiv.id) {
+                                turnstile.render(turnstileDiv.id, {
+                                    sitekey: turnstileDiv.dataset.sitekey,
+                                    theme: turnstileDiv.dataset.theme,
+                                    language: turnstileDiv.dataset.language,
+                                    action: turnstileDiv.dataset.action,
+                                    callback: window.onTurnstileSuccess
+                                });
+                            } else {
+                                console.warn("Turnstile API not loaded when trying to render");
+                            }
+                        });
+                    }, 800); // 延迟800ms
+                });
             }
 
             function onTurnstileSuccess(token) {
@@ -146,8 +155,8 @@ class Turnstile {
                 }
             }
 
-            // 在 window.onload 时触发初始化，确保所有资源加载完成
-            window.onload = function() {
+            // 使用 DOMContentLoaded 替代 window.onload，确保 DOM 就绪后尽早初始化
+            document.addEventListener("DOMContentLoaded", () => {
                 const script = document.querySelector("script[src=\'' . esc_url(self::API_SCRIPT_URL) . '\']");
                 if (script) {
                     script.addEventListener("error", () => {
@@ -158,11 +167,15 @@ class Turnstile {
                             errorDiv.style.display = "block";
                         }
                     });
+                    script.addEventListener("load", initializeTurnstile);
                 }
-                initializeTurnstile();
-            };
+                // 如果脚本已加载完成，直接初始化
+                if (typeof turnstile !== "undefined") {
+                    initializeTurnstile();
+                }
+            });
 
-            // 如果 window.onload 已触发，则直接初始化
+            // 如果页面已完全加载，确保初始化
             if (document.readyState === "complete") {
                 initializeTurnstile();
             }
