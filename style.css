@@ -1224,8 +1224,10 @@ body.dark .site-footer {
 
 .cdn-provider {
   display: flex;
-  align-items: center;
+  align-items: center; /* 垂直居中对齐 */
+  justify-content: center; /* 水平居中对齐，确保独占一行时内容居中 */
   gap: 5px;
+  width: 100%; /* 确保独占一行 */
 }
 
 .cdn-provider img {
@@ -6760,3 +6762,9 @@ a.toc-link {
     text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
 }
 
+.ai-poem
+ {
+    text-align: center;
+    margin: 0 auto;
+    display: block;
+}
