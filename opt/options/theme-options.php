@@ -3297,47 +3297,67 @@ $prefix = 'iro_options';
       ),
 
       array(
-        'id' => 'captcha_select',
-        'type' => 'select',
-        'title' => __('Captcha Selection','sakurairo_csf'),
-        'options' => array(
-          'off' => __('Off','sakurairo_csf'),
-          'iro_captcha' => __('Theme Built in Captcha','sakurairo_csf'),
-          'vaptcha' => __('Vaptcha','sakurairo_csf')
-        ),
-        'default' => 'off',
-      ),
-      
+              // Captcha selection dropdown
+              'id'      => 'captcha_select',
+              'type'    => 'select',
+              'title'   => 'Captcha Selection',
+              'options' => array(
+                  'off'         => 'Off',
+                  'iro_captcha' => 'Theme Built-in Captcha',
+                  'vaptcha'     => 'Vaptcha',
+                  'turnstile'   => 'Cloudflare Turnstile',
+              ),
+              'default' => 'off', 
+          ),
+          
       array(
         'id' => 'vaptcha_vid',
         'type' => 'text',
-        'title' => __('Vaptcha VID','sakurairo_csf'),
-        'dependency' => array( 'captcha_select', '==', 'vaptcha', '', 'true' ),
-        'desc' => __('Fill in your Vaptcha VID','sakurairo_csf'),
+        'title' => __('Vaptcha VID', 'sakurairo_csf'),
+        'dependency' => array('captcha_select', '==', 'vaptcha', '', 'true'),
+        'desc' => __('Fill in your Vaptcha VID', 'sakurairo_csf'),
       ),
 
       array(
         'id' => 'vaptcha_key',
         'type' => 'text',
-        'title' => __('Vaptcha KEY','sakurairo_csf'),
-        'dependency' => array( 'captcha_select', '==', 'vaptcha', '', 'true' ),
-        'desc' => __('Fill in your Vaptcha KEY','sakurairo_csf'),
+        'title' => __('Vaptcha KEY', 'sakurairo_csf'),
+        'dependency' => array('captcha_select', '==', 'vaptcha', '', 'true'),
+        'desc' => __('Fill in your Vaptcha KEY', 'sakurairo_csf'),
       ),
 
       array(
         'id' => 'vaptcha_scene',
         'type' => 'select',
-        'title' => __('Vaptcha Scene','sakurairo_csf'),
-        'dependency' => array( 'captcha_select', '==', 'vaptcha', '', 'true' ),
+        'title' => __('Vaptcha Scene', 'sakurairo_csf'),
+        'dependency' => array('captcha_select', '==', 'vaptcha', '', 'true'),
         'options' => array(
-          '1' => __(1,'sakurairo_csf'),
-          '2' => __(2,'sakurairo_csf'),
-          '3' => __(3,'sakurairo_csf'),
-          '4' => __(4,'sakurairo_csf'),
-          '5' => __(5,'sakurairo_csf'),
-          '6' => __(6,'sakurairo_csf'),
+          '1' => __(1, 'sakurairo_csf'),
+          '2' => __(2, 'sakurairo_csf'),
+          '3' => __(3, 'sakurairo_csf'),
+          '4' => __(4, 'sakurairo_csf'),
+          '5' => __(5, 'sakurairo_csf'),
+          '6' => __(6, 'sakurairo_csf'),
         ),
-        'default' => 1,
+        'default' => '1',
+      ),
+
+      array(
+        'id'          => 'turnstile_sitekey',
+        'type'        => 'text',
+        'title'       => 'Turnstile Site Key',
+        'dependency'  => array('captcha_select', '==', 'turnstile'),
+        'desc'        => 'Site key obtained from the Cloudflare dashboard',
+        'default'     => '', // 添加默认值
+      ),
+
+      array(
+        'id'          => 'turnstile_secret',
+        'type'        => 'text',
+        'title'       => 'Turnstile Secret Key',
+        'dependency'  => array('captcha_select', '==', 'turnstile'),
+        'desc'        => 'Secret key obtained from the Cloudflare dashboard',
+        'default'     => '', // 添加默认值
       ),
 
       array(
