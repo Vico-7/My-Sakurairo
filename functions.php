@@ -3037,6 +3037,230 @@ if (iro_opt('captcha_select') === 'iro_captcha') {
     add_filter('authenticate', 'checkVaptchaAction', 20, 3);
 }
 
+/**
+ * WordPress integration for Cloudflare Turnstile CAPTCHA.
+ */
+defined('ABSPATH') || exit;
+
+// 兼容性检查：确保 iro_opt 函数存在
+if (!function_exists('iro_opt')) {
+    add_action('admin_notices', function () {
+        echo '<div class="notice notice-error"><p>' 
+            . esc_html__('错误：主题配置函数不可用，请检查主题设置。', 'sakurairo') 
+            . '</p></div>';
+    });
+    return;
+}
+
+// 配置检查前置，避免不必要的文件加载
+if (
+    iro_opt('captcha_select') !== 'turnstile' ||
+    empty(iro_opt('turnstile_sitekey')) ||
+    empty(iro_opt('turnstile_secret'))
+) {
+    return;
+}
+
+// 延迟加载文件检查
+$turnstile_file = get_template_directory() . '/inc/classes/Turnstile.php';
+if (!file_exists($turnstile_file)) {
+    add_action('admin_notices', function () {
+        echo '<div class="notice notice-error"><p>' 
+            . esc_html__('错误：Turnstile.php 文件未找到，请检查主题路径或联系管理员。', 'sakurairo') 
+            . '</p></div>';
+    });
+    return;
+}
+
+require_once $turnstile_file;
+
+class Turnstile_Integration {
+    private static $turnstile = null;
+
+    /**
+     * 获取 Turnstile 实例（单例模式）
+     */
+    private static function get_turnstile() {
+        if (self::$turnstile === null) {
+            if (!class_exists('Turnstile')) {
+                throw new Exception(__('验证模块未加载', 'sakurairo'));
+            }
+            self::$turnstile = new Turnstile();
+        }
+        return self::$turnstile;
+    }
+
+    /**
+     * 初始化方法
+     */
+    public static function init() {
+        // 前端表单处理
+        add_action('login_form', [__CLASS__, 'handle_form_display']);
+        add_action('register_form', [__CLASS__, 'handle_form_display']);
+        add_action('lostpassword_form', [__CLASS__, 'handle_form_display']);
+        
+        // 自定义注册页面处理
+        add_action('wp_footer', [__CLASS__, 'handle_custom_register_page']);
+        
+        // 验证逻辑挂载
+        add_filter('authenticate', [__CLASS__, 'validate_login'], 20, 3);
+        add_action('lostpassword_post', [__CLASS__, 'validate_lost_password']);
+        add_filter('registration_errors', [__CLASS__, 'validate_registration'], 2, 3);
+    }
+
+    /**
+     * 处理表单显示
+     */
+    public static function handle_form_display() {
+        $action = str_replace('_form', '', current_filter());
+        self::render_turnstile($action);
+    }
+    
+
+    /**
+     * 处理自定义注册页面
+     */
+    public static function handle_custom_register_page() {
+        // 更灵活的检查方式，兼容不同主题的注册页面
+        $register_page_id = iro_opt('register_page_id'); // 假设主题配置中有注册页面 ID
+        if (is_page($register_page_id) || is_page_template('page-register.php')) {
+            self::render_turnstile('register');
+        }
+    }
+
+    /**
+     * 渲染 Turnstile 组件
+     */
+    private static function render_turnstile($action) {
+        try {
+            $turnstile = self::get_turnstile();
+            echo '<div class="turnstile-container">';
+            wp_nonce_field('turnstile_verify', 'turnstile_nonce');
+            echo $turnstile->html($action);
+            echo $turnstile->script();
+            echo '</div>';
+        } catch (Exception $e) {
+            error_log('Turnstile 渲染错误: ' . $e->getMessage() . ' | URL: ' . esc_url_raw($_SERVER['REQUEST_URI']));
+            echo '<p class="turnstile-error">' 
+                . esc_html__('验证模块加载失败，请联系网站管理员。', 'sakurairo') 
+                . '</p>';
+        }
+    }
+
+    /**
+     * 通用验证方法
+     */
+    private static function validate($errors = null) {
+        // 检查 nonce
+        if (!isset($_POST['turnstile_nonce']) || !wp_verify_nonce($_POST['turnstile_nonce'], 'turnstile_verify')) {
+            return self::handle_error('invalid_nonce', $errors);
+        }
+
+        // 请求方法检查
+        if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
+            return self::handle_error('invalid_method', $errors);
+        }
+
+        // Token 验证
+        $token = $_POST['cf-turnstile-response'] ?? '';
+        if (empty($token)) {
+            return self::handle_error('missing_token', $errors);
+        }
+
+        try {
+            $turnstile = self::get_turnstile();
+            $response = $turnstile->verify($token);
+
+            if (!isset($response->success)) {
+                return self::handle_error('service_error', $errors);
+            }
+
+            if ($response->success) {
+                return true;
+            }
+
+            $error_codes = $response->{'error-codes'} ?? [];
+            if (in_array('invalid-input-response', $error_codes, true)) {
+                return self::handle_error('token_expired', $errors);
+            }
+
+            return self::handle_error(
+                'verification_failed', 
+                $errors, 
+                $turnstile->parseError($error_codes)
+            );
+
+        } catch (Exception $e) {
+            error_log('Turnstile 验证异常: ' . $e->getMessage() . ' | URL: ' . esc_url_raw($_SERVER['REQUEST_URI']));
+            return self::handle_error('exception', $errors, __('系统异常，请联系管理员', 'sakurairo'));
+        }
+    }
+
+    /**
+     * 错误处理统一方法
+     */
+    private static function handle_error($code, $errors = null, $message = '') {
+        $messages = [
+            'invalid_nonce'      => __('请求验证失败，请刷新页面重试', 'sakurairo'),
+            'invalid_method'     => __('请求方法不正确', 'sakurairo'),
+            'missing_token'      => __('请完成人机验证', 'sakurairo'),
+            'service_error'      => __('验证服务不可用', 'sakurairo'),
+            'token_expired'      => __('验证已过期，请重新验证', 'sakurairo'),
+            'verification_failed' => __('验证失败，请重试', 'sakurairo'),
+            'exception'          => __('系统异常，请联系管理员', 'sakurairo'),
+        ];
+
+        $message = $message ?: ($messages[$code] ?? __('未知错误', 'sakurairo'));
+        $error = new WP_Error($code, '<strong>' . __('错误') . '</strong>: ' . $message);
+
+        if ($errors && is_wp_error($errors)) {
+            $errors->add($code, $error->get_error_message());
+        }
+
+        return $error;
+    }
+
+    /**
+     * 登录验证
+     */
+    public static function validate_login($user, $username, $password) {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $result = self::validate();
+            if (is_wp_error($result)) {
+                return $result;
+            }
+        }
+        return $user;
+    }
+
+    /**
+     * 找回密码验证
+     */
+    public static function validate_lost_password($errors) {
+        if (!is_admin() && !current_user_can('manage_options')) {
+            $result = self::validate($errors);
+            if (is_wp_error($result)) {
+                $errors->add($result->get_error_code(), $result->get_error_message());
+            }
+        }
+        return $errors;
+    }
+
+    /**
+     * 注册验证
+     */
+    public static function validate_registration($errors, $sanitized_user_login, $user_email) {
+        $result = self::validate($errors);
+        if (is_wp_error($result)) {
+            $errors->add($result->get_error_code(), $result->get_error_message());
+        }
+        return $errors;
+    }
+}
+
+// 初始化功能
+Turnstile_Integration::init();
+
 // 获取访客 IP
 function get_the_user_ip()
 {
@@ -3946,3 +4170,160 @@ function iro_action_operator()
     }
 }
 iro_action_operator();
+
+function get_client_ip() {
+    // 优先处理 CloudFlare 代理头
+    if (isset($_SERVER['HTTP_CF_CONNECTING_IP']) && filter_var($_SERVER['HTTP_CF_CONNECTING_IP'], FILTER_VALIDATE_IP)) {
+        return $_SERVER['HTTP_CF_CONNECTING_IP'];
+    }
+
+    // 默认 IP 来源
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+
+    // 处理 HTTP_X_FORWARDED_FOR
+    if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $forwarded_ips = array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']));
+        foreach ($forwarded_ips as $forwarded_ip) {
+            if (filter_var($forwarded_ip, FILTER_VALIDATE_IP)) {
+                return $forwarded_ip; // 返回第一个有效 IP
+            }
+        }
+    } elseif (isset($_SERVER['HTTP_CLIENT_IP']) && filter_var($_SERVER['HTTP_CLIENT_IP'], FILTER_VALIDATE_IP)) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    }
+
+    return $ip;
+}
+
+function fetch_ip_data($ip) {
+    $transient_key = 'proxycheck_ip_data_' . md5($ip); // 添加前缀避免冲突
+    $cached_data = get_transient($transient_key);
+
+    if ($cached_data !== false) {
+        return $cached_data;
+    }
+
+    if (!defined('PROXYCHECK_API_KEY')) {
+        return false;
+    }
+
+    $url = sprintf(
+        'https://proxycheck.io/v2/%s?key=%s&vpn=1&risk=1&asn=1',
+        urlencode($ip),
+        urlencode(PROXYCHECK_API_KEY)
+    );
+
+    $response = wp_remote_get($url, [
+        'timeout'     => 5,
+        'redirection' => 5,
+        'httpversion' => '1.1',
+        'sslverify'   => true,
+    ]);
+
+    if (is_wp_error($response)) {
+        return false;
+    }
+
+    $status_code = wp_remote_retrieve_response_code($response);
+    if ($status_code !== 200) {
+        return false;
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    $data = json_decode($body, true);
+
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($data) || $data['status'] !== 'ok' || !isset($data[$ip])) {
+        return false;
+    }
+
+    $ip_data = $data[$ip];
+    $result = [
+        'country' => $ip_data['country'] ?? 'Unknown',
+        'proxy'   => ($ip_data['proxy'] ?? '') === 'yes',
+        'type'    => $ip_data['type'] ?? 'Unknown',
+        'risk'    => is_numeric($ip_data['risk'] ?? null) ? (int)$ip_data['risk'] : 'Unknown'
+    ];
+
+    set_transient($transient_key, $result, 5 * MINUTE_IN_SECONDS);
+    return $result;
+}
+
+function format_visitor_info($ip, $data = null) {
+    if ($data === false || $data === null) {
+        return sprintf(
+            'Your IP: %s | Country: Unknown | Proxy: Unknown | Type: Unknown | Risk: Unknown',
+            esc_html($ip)
+        );
+    }
+
+    return sprintf(
+        'Your IP: %s | Country: %s | Proxy: %s | Type: %s | Risk: %s',
+        esc_html($ip),
+        esc_html($data['country']),
+        $data['proxy'] ? 'Yes' : 'No',
+        esc_html($data['type']),
+        esc_html($data['risk'])
+    );
+}
+
+function get_visitor_info() {
+    $ip = get_client_ip();
+
+    if ($ip === 'Unknown' || !filter_var($ip, FILTER_VALIDATE_IP)) {
+        return format_visitor_info('Unknown');
+    }
+
+    $data = fetch_ip_data($ip);
+    if ($data === false) {
+        return format_visitor_info($ip); // 使用 Unknown 填充
+    }
+
+    return format_visitor_info($ip, $data);
+}
+
+function get_ai_poem_from_cf_header() {
+    if (!defined('GROK_API_KEY')) {
+        return 'API key missing';
+    }
+
+    $country = $_SERVER['HTTP_CF_IPCOUNTRY'] ?? 'Unknown';
+    $country = (strlen($country) === 2 && ctype_alpha($country)) ? strtoupper($country) : 'Unknown';
+
+    $max_retries = 3;
+    $retry_delay = 1; // 秒
+    $response = false;
+
+    for ($i = 0; $i < $max_retries; $i++) {
+        $response = wp_remote_post('https://api.x.ai/v1/chat/completions', [
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . GROK_API_KEY
+            ],
+            'body' => json_encode([
+                'model' => 'grok-3',
+                'messages' => [
+                    ['role' => 'system', 'content' => "You are a talented literary giant from $country, but you never write love poems."],
+                    ['role' => 'user', 'content' => 'Write a beautiful two-line poem in your native language. Output only the poem, no additional content.']
+                ],
+                'stream' => false,
+                'temperature' => 1.0
+            ]),
+            'timeout' => 15
+        ]);
+
+        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+            break;
+        }
+        sleep($retry_delay);
+    }
+
+    if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        return 'I know that I know nothing. - Socrates';
+    }
+
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    if (json_last_error() === JSON_ERROR_NONE && isset($data['choices'][0]['message']['content'])) {
+        return $data['choices'][0]['message']['content'];
+    }
+    return 'I know that I know nothing. - Socrates';
+}
